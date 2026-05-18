@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IMG Winter Haven — Referral Target Map</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f5f4f0; color: #1a1a1a; }
+.header { background: #1F3864; color: white; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 17px; font-weight: 600; }
+.header p { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+.header-right { text-align: right; font-size: 12px; opacity: 0.8; }
+.stats-bar { background: white; border-bottom: 1px solid #e5e3de; padding: 8px 24px; display: flex; gap: 0; flex-wrap: wrap; }
+.stat { padding: 4px 20px 4px 0; margin-right: 20px; border-right: 1px solid #eee; }
+.stat:last-child { border-right: none; }
+.stat-val { font-size: 20px; font-weight: 700; line-height: 1; }
+.stat-lbl { font-size: 11px; color: #888; margin-top: 1px; }
+.controls { background: white; border-bottom: 1px solid #e5e3de; padding: 8px 24px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.controls-label { font-size: 12px; color: #666; font-weight: 500; margin-right: 2px; }
+.filter-btn { font-size: 12px; padding: 5px 13px; border: 1px solid #ddd; border-radius: 20px; background: white; color: #555; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.filter-btn:hover { background: #f0ede8; border-color: #bbb; }
+.filter-btn.active { background: #1F3864; color: white; border-color: #1F3864; }
+.map-container { position: relative; background: #e8f0e8; overflow: hidden; }
+svg#map { display: block; width: 100%; height: auto; max-height: calc(100vh - 160px); }
+.map-land { fill: #f7f5f0; }
+.map-water { fill: #c8dce8; }
+.dot { cursor: pointer; transition: r 0.1s; }
+.dot:hover { r: 10; }
+.tooltip {
+  position: absolute; pointer-events: none;
+  background: white; border: 1px solid #ddd; border-radius: 8px;
+  padding: 10px 14px; font-size: 13px; min-width: 200px; max-width: 260px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15); display: none; z-index: 100;
+}
+.tooltip-name { font-weight: 600; font-size: 14px; margin-bottom: 2px; color: #1a1a1a; }
+.tooltip-meta { font-size: 12px; color: #666; margin-bottom: 6px; }
+.tooltip-badges { display: flex; gap: 5px; flex-wrap: wrap; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+.badge-High { background: #EAF3DE; color: #27500A; }
+.badge-Medium { background: #FAEEDA; color: #633806; }
+.badge-Low { background: #F1EFE8; color: #555; }
+.badge-active { background: #E1F5EE; color: #085041; }
+.badge-monitor { background: #FAEEDA; color: #633806; }
+.badge-new { background: #f0f0f0; color: #666; }
+.legend {
+  position: absolute; bottom: 20px; right: 16px;
+  background: white; border: 1px solid #ddd; border-radius: 10px;
+  padding: 12px 15px; font-size: 12px; min-width: 165px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+.legend h3 { font-size: 11px; font-weight: 700; color: #444; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.6px; }
+.li { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; color: #444; }
+.dot-swatch { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.ring-swatch { width: 11px; height: 11px; border-radius: 50%; border: 2.5px solid; background: transparent; flex-shrink: 0; }
+.legend-div { border: none; border-top: 1px solid #eee; margin: 7px 0; }
+.img-pin { fill: #E24B4A; }
+.scale-bar { position: absolute; bottom: 20px; left: 24px; background: rgba(255,255,255,0.9); border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; font-size: 11px; color: #555; }
+
+.zoom-controls {
+  position: absolute; top: 16px; left: 16px; z-index: 200;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.zoom-btn {
+  width: 34px; height: 34px; background: white; border: 1px solid #ccc;
+  border-radius: 6px; font-size: 20px; font-weight: 300; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12); color: #333; line-height:1;
+  user-select: none;
+}
+.zoom-btn:hover { background: #f5f5f5; }
+.zoom-reset {
+  font-size: 11px; font-weight: 600; color: #555;
+}
+#map { cursor: grab; }
+#map.panning { cursor: grabbing; }
+.zoom-hint {
+  position: absolute; top: 16px; left: 60px; z-index: 200;
+  background: rgba(255,255,255,0.92); border: 1px solid #ddd; border-radius: 6px;
+  padding: 5px 10px; font-size: 11px; color: #666;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1); pointer-events: none;
+}
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>IMG Winter Haven — Referral Target Map</h1>
+    <p>133 accounts across 6 provider types &nbsp;·&nbsp; 30-mile radius &nbsp;·&nbsp; Competitors excluded</p>
+  </div>
+  <div class="header-right">
+    <div style="font-weight:600;">📍 IMG Facility</div>
+    <div>180 Ave A SE, Winter Haven, FL 33880</div>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat"><div class="stat-val" style="color:#1F3864;">133</div><div class="stat-lbl">Total Accounts</div></div>
+  <div class="stat"><div class="stat-val" style="color:#378ADD;">42</div><div class="stat-lbl">Chiropractors</div></div>
+  <div class="stat"><div class="stat-val" style="color:#7F77DD;">35</div><div class="stat-lbl">PI Attorneys</div></div>
+  <div class="stat"><div class="stat-val" style="color:#1D9E75;">34</div><div class="stat-lbl">Primary Care</div></div>
+  <div class="stat"><div class="stat-val" style="color:#EF9F27;">9</div><div class="stat-lbl">Urgent Care</div></div>
+  <div class="stat"><div class="stat-val" style="color:#D4537E;">7</div><div class="stat-lbl">Rehab</div></div>
+  <div class="stat"><div class="stat-val" style="color:#888780;">6</div><div class="stat-lbl">MRI / Imaging</div></div>
+</div>
+
+<div class="controls">
+  <span class="controls-label">Filter:</span>
+  <button class="filter-btn active" id="btn-all" onclick="filterCat('all')">All (133)</button>
+  <button class="filter-btn" id="btn-Chiropractic" onclick="filterCat('Chiropractic')">🦴 Chiropractors (42)</button>
+  <button class="filter-btn" id="btn-Attorney" onclick="filterCat('Attorney')">⚖️ PI Attorneys (35)</button>
+  <button class="filter-btn" id="btn-Primary_Care" onclick="filterCat('Primary Care')">👨‍⚕️ Primary Care (34)</button>
+  <button class="filter-btn" id="btn-Urgent_Care" onclick="filterCat('Urgent Care')">🏥 Urgent Care (9)</button>
+  <button class="filter-btn" id="btn-Rehab" onclick="filterCat('Rehab')">💪 Rehab (7)</button>
+  <button class="filter-btn" id="btn-MRI" onclick="filterCat('MRI')">🔬 MRI (6)</button>
+</div>
+
+<div class="map-container" id="map-wrap">
+
+  <div class="zoom-controls">
+    <button class="zoom-btn" onclick="zoomIn()" title="Zoom in">+</button>
+    <button class="zoom-btn zoom-reset" onclick="zoomReset()" title="Reset zoom">⌂</button>
+    <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
+  </div>
+  <div class="zoom-hint">Scroll to zoom &nbsp;·&nbsp; Drag to pan</div>
+
+  <svg id="map" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e8e4dc" stroke-width="0.4"/>
+      </pattern>
+    </defs>
+
+    <!-- Background land -->
+    <rect width="1200" height="800" fill="#f0ede6"/>
+    <!-- Grid -->
+    <rect width="1200" height="800" fill="url(#grid)" opacity="0.5"/>
+
+    <!-- Water bodies (approximate Lake Tohopekaliga and other lakes) -->
+    <!-- Lake Tohopekaliga south of Kissimmee (northeast corner) -->
+    <ellipse cx="1090" cy="120" rx="90" ry="75" fill="#c8dce8" opacity="0.7"/>
+    <!-- Chain of lakes near Winter Haven (approximate) -->
+    <ellipse cx="490" cy="390" rx="35" ry="18" fill="#c8dce8" opacity="0.8"/>
+    <ellipse cx="555" cy="410" rx="28" ry="14" fill="#c8dce8" opacity="0.8"/>
+    <ellipse cx="620" cy="430" rx="25" ry="12" fill="#c8dce8" opacity="0.8"/>
+    <ellipse cx="460" cy="440" rx="22" ry="11" fill="#c8dce8" opacity="0.8"/>
+    <ellipse cx="530" cy="460" rx="20" ry="10" fill="#c8dce8" opacity="0.8"/>
+    <!-- Lake Hatchineha area -->
+    <ellipse cx="700" cy="500" rx="30" ry="18" fill="#c8dce8" opacity="0.7"/>
+    <!-- Lake Wales Ridge lakes -->
+    <ellipse cx="890" cy="560" rx="18" ry="10" fill="#c8dce8" opacity="0.7"/>
+
+    <!-- Roads -->
+    <path d="M 712.0 115.0 L 710.5 160.0 L 715.1 220.0 L 718.1 280.0 L 733.5 325.0 L 741.2 385.0 L 747.3 490.0 L 742.7 550.0 L 784.1 640.0 L 817.9 715.0" fill="none" stroke="#c8c4bc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 40.0 430.0 L 193.4 430.0 L 224.1 415.0 L 254.8 400.0 L 316.2 385.0 L 392.9 370.0 L 469.6 355.0 L 531.0 370.0 L 577.0 400.0 L 623.0 430.0 L 653.7 460.0" fill="none" stroke="#c8c4bc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 438.9 400.0 L 469.6 400.0 L 484.9 400.0 L 500.3 415.0 L 531.0 430.0 L 561.6 430.0 L 592.3 430.0 L 623.0 430.0 L 669.0 430.0 L 699.7 430.0" fill="none" stroke="#c8c4bc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 162.7 640.0 L 239.5 640.0 L 346.8 655.0 L 408.2 655.0 L 515.6 655.0 L 684.4 655.0 L 776.4 655.0 L 853.2 655.0 L 929.9 655.0" fill="none" stroke="#c8c4bc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 577.0 460.0 L 592.3 475.0 L 607.7 490.0 L 623.0 505.0 L 638.4 520.0 L 653.7 535.0 L 699.7 535.0 L 745.8 535.0" fill="none" stroke="#c8c4bc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Road labels -->
+    <text x="730.4" y="400.0" text-anchor="middle" font-size="9" fill="#aaa9a4" font-family="Arial,sans-serif" font-style="italic">US-27</text>
+    <text x="346.8" y="400.0" text-anchor="middle" font-size="9" fill="#aaa9a4" font-family="Arial,sans-serif" font-style="italic">I-4</text>
+    <text x="531.0" y="395.5" text-anchor="middle" font-size="9" fill="#aaa9a4" font-family="Arial,sans-serif" font-style="italic">US-92</text>
+    <text x="592.3" y="652.0" text-anchor="middle" font-size="9" fill="#aaa9a4" font-family="Arial,sans-serif" font-style="italic">SR-60</text>
+
+    <!-- 30-mile radius circle -->
+    <ellipse cx="580.8" cy="458.6" rx="756" ry="652"
+      fill="#378ADD" fill-opacity="0.04"
+      stroke="#378ADD" stroke-width="1.5" stroke-dasharray="8 5"
+      stroke-opacity="0.5"/>
+
+    <!-- 5-mile MRI radius -->
+    <ellipse cx="580.8" cy="458.6" rx="126" ry="109"
+      fill="#888780" fill-opacity="0.08"
+      stroke="#888780" stroke-width="1" stroke-dasharray="4 3"
+      stroke-opacity="0.6"/>
+
+    <!-- City name labels -->
+    <text x="580.1" y="457.0" text-anchor="middle" font-size="11" fill="#8a8680" font-family="Arial,sans-serif" font-weight="500" letter-spacing="0.3">WINTER HAVEN</text>
+    <text x="231.8" y="430.0" text-anchor="middle" font-size="11" fill="#8a8680" font-family="Arial,sans-serif" font-weight="500" letter-spacing="0.3">LAKELAND</text>
+    <text x="733.5" y="325.0" text-anchor="middle" font-size="11" fill="#8a8680" font-family="Arial,sans-serif" font-weight="500" letter-spacing="0.3">HAINES CITY</text>
+    <text x="486.5" y="395.5" text-anchor="middle" font-size="11" fill="#8a8680" font-family="Arial,sans-serif" font-weight="500" letter-spacing="0.3">AUBURNDALE</text>
+    <text x="402.1" y="644.5" text-anchor="middle" font-size="11" fill="#8a8680" font-family="Arial,sans-serif" font-weight="500" letter-spacing="0.3">BARTOW</text>
+    <text x="797.9" y="638.5" text-anchor="middle" font-size="11" fill="#8a8680" font-family="Arial,sans-serif" font-weight="500" letter-spacing="0.3">LAKE WALES</text>
+    <text x="770.3" y="245.5" text-anchor="middle" font-size="11" fill="#8a8680" font-family="Arial,sans-serif" font-weight="500" letter-spacing="0.3">DAVENPORT</text>
+    <text x="949.8" y="317.5" text-anchor="middle" font-size="11" fill="#8a8680" font-family="Arial,sans-serif" font-weight="500" letter-spacing="0.3">POINCIANA</text>
+
+    <!-- Provider dots -->
+    <circle class="dot Chiropractic" cx="639.6" cy="501.7" r="7" fill="#378ADD" fill-opacity="0.85" stroke="#1D9E75" stroke-width="2.5" data-name="Next Medical Florida" data-cat="Chiropractic" data-pri="High" data-rel="active"/>
+    <circle class="dot Chiropractic" cx="557.5" cy="424.0" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Prime Care Chiropractic" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="593.4" cy="472.6" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Trueheart Chiropractic" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="572.8" cy="442.3" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Advanced Spine & Wellness" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="595.6" cy="485.5" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="The Joint Chiropractic - WH" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="639.0" cy="494.2" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Cypress Chiropractic" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="578.8" cy="459.1" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Winter Haven Wellness Center" data-cat="Chiropractic" data-pri="Low" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="594.9" cy="479.5" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Smith Chiropractic" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="651.1" cy="494.4" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="ChiroWorks LLC" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="581.6" cy="459.1" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="New Hope Chiropractic - WH" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="581.0" cy="457.2" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Cloud Chiropractic - WH" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="594.0" cy="482.7" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Newberry Clinic" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="593.9" cy="455.7" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Massage & Spinal Therapy WH" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="638.8" cy="494.1" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Florida Injury Centers - WH" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="516.1" cy="415.1" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Bush Chiropractic" data-cat="Chiropractic" data-pri="Low" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="486.6" cy="395.8" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Auburndale Chiropractic" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="480.2" cy="390.6" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Physicians Group - Auburndale" data-cat="Chiropractic" data-pri="Low" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="485.2" cy="395.8" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Florida Injury Centers - Auburndale" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="224.6" cy="521.5" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="The Joint Chiropractic - Lakeland" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="229.3" cy="524.9" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="New Hope Chiropractic - Lakeland" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="173.0" cy="371.4" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Chiropractic Center of Lakeland" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="233.9" cy="392.8" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Essential ChiroCare" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="227.5" cy="506.1" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="The Lakeland Chiropractor" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="228.3" cy="444.7" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Aligned Life Chiropractic" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="203.6" cy="571.5" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Chiromed Wellness Centers" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="246.8" cy="298.0" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Munday Chiropractic" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="279.2" cy="560.1" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Watson Clinic Specialized Rehab" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="740.2" cy="338.2" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Heart of Florida Chiro" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="714.8" cy="314.9" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Rosado Chiropractic" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="712.9" cy="300.4" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Ridge Chiropractic Car Accident" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="736.5" cy="328.1" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Cloud Chiro - Haines City" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="720.0" cy="276.3" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Path Medical - Haines City" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="719.7" cy="306.1" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="27 Injury & Wellness" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="718.1" cy="223.3" r="7" fill="#378ADD" fill-opacity="0.85" stroke="#EF9F27" stroke-width="2.5" data-name="Davenport Chiropractic & Injury" data-cat="Chiropractic" data-pri="High" data-rel="monitor"/>
+    <circle class="dot Chiropractic" cx="718.1" cy="240.9" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Elite Life Chiropractic" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="424.2" cy="643.2" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Aqui Chiropractic - Bartow" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="407.6" cy="645.6" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Injury & Wellness of Bartow" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="403.0" cy="655.3" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="ETERNA Chiropractic - Bartow" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="855.6" cy="648.1" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="McKeon Chiropractic - Lake Wales" data-cat="Chiropractic" data-pri="High" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="744.7" cy="552.7" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Jahna Chiropractic" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="797.9" cy="640.2" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Alternative Care - Dr. Faro" data-cat="Chiropractic" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Chiropractic" cx="796.7" cy="637.8" r="7" fill="#378ADD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Life in Balance Chiropractic" data-cat="Chiropractic" data-pri="Low" data-rel="new"/>
+    <circle class="dot Attorney" cx="581.4" cy="454.6" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Brooks Law Group - WH" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="576.5" cy="458.9" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="JustCallMoe / DeWitt Law" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="559.8" cy="424.3" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Howell & Thornhill - WH" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="571.8" cy="457.6" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Kemp Injury Law" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="571.9" cy="456.1" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Jiles & Fugate Law" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="573.8" cy="454.1" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="The Turnbull Law Firm" data-cat="Attorney" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Attorney" cx="654.6" cy="455.7" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Cappello Legal" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="571.6" cy="457.6" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="The Florida Law Group" data-cat="Attorney" data-pri="Low" data-rel="new"/>
+    <circle class="dot Attorney" cx="582.4" cy="469.5" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Pencheff and Fraley" data-cat="Attorney" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Attorney" cx="592.6" cy="456.4" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="#1D9E75" stroke-width="2.5" data-name="Morgan & Morgan - WH" data-cat="Attorney" data-pri="High" data-rel="active"/>
+    <circle class="dot Attorney" cx="714.0" cy="211.9" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="#EF9F27" stroke-width="2.5" data-name="Pardy & Rodriguez - Davenport" data-cat="Attorney" data-pri="High" data-rel="monitor"/>
+    <circle class="dot Attorney" cx="1018.2" cy="270.3" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="#EF9F27" stroke-width="2.5" data-name="Pardy & Rodriguez - Poinciana" data-cat="Attorney" data-pri="High" data-rel="monitor"/>
+    <circle class="dot Attorney" cx="710.8" cy="157.0" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="#1D9E75" stroke-width="2.5" data-name="Martinez Manglardi - Davenport" data-cat="Attorney" data-pri="High" data-rel="active"/>
+    <circle class="dot Attorney" cx="735.9" cy="326.3" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Howell & Thornhill - Haines City" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="736.5" cy="328.1" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Abrahamson & Uiterwyk - Haines City" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="740.2" cy="339.5" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Law Offices of Markeishia Smith" data-cat="Attorney" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Attorney" cx="402.7" cy="640.2" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Moody Law - Bartow" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="397.6" cy="644.0" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Lopez & Humphries - Bartow" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="791.8" cy="637.9" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Howell & Thornhill - Lake Wales" data-cat="Attorney" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Attorney" cx="795.9" cy="636.3" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Tonya Stewart Law" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="820.3" cy="649.5" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Sara Jones Law" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="229.3" cy="413.0" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Brooks Law Group - Lakeland" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="229.0" cy="467.2" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Lopez & Humphries - Lakeland" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="231.9" cy="424.1" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Abrahamson & Uiterwyk - Lakeland" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="229.2" cy="460.5" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Dismuke Law" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="228.3" cy="462.9" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Howell & Thornhill - Lakeland" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="304.5" cy="453.0" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="#1D9E75" stroke-width="2.5" data-name="Morgan & Morgan - Lakeland (Combee)" data-cat="Attorney" data-pri="High" data-rel="active"/>
+    <circle class="dot Attorney" cx="232.5" cy="429.7" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="#1D9E75" stroke-width="2.5" data-name="Morgan & Morgan - Lakeland (Kentucky)" data-cat="Attorney" data-pri="High" data-rel="active"/>
+    <circle class="dot Attorney" cx="229.0" cy="461.7" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="#1D9E75" stroke-width="2.5" data-name="Morgan & Morgan - Lakeland (Florida Ave)" data-cat="Attorney" data-pri="High" data-rel="active"/>
+    <circle class="dot Attorney" cx="282.6" cy="459.1" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Moody Law - Lakeland" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="230.7" cy="424.1" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Maranatha Law" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="304.4" cy="452.8" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="RHINO Lawyers" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="232.1" cy="424.1" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Fernandez Firm" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="227.9" cy="427.6" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Weston & Pape" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Attorney" cx="220.0" cy="536.0" r="7" fill="#7F77DD" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Dennis Hernandez Attorneys" data-cat="Attorney" data-pri="High" data-rel="new"/>
+    <circle class="dot Urgent_Care" cx="694.7" cy="521.5" r="7" fill="#EF9F27" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="AdventHealth Centra Care - WH" data-cat="Urgent Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Urgent_Care" cx="582.2" cy="450.9" r="7" fill="#EF9F27" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="BayCare Urgent Care - WH" data-cat="Urgent Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Urgent_Care" cx="581.4" cy="451.7" r="7" fill="#EF9F27" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="AdventHealth Bond Clinic UC" data-cat="Urgent Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Urgent_Care" cx="572.7" cy="455.5" r="7" fill="#EF9F27" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Owl Now Urgent Care" data-cat="Urgent Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Urgent_Care" cx="582.5" cy="467.9" r="7" fill="#EF9F27" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Doctor Today TLC LLC" data-cat="Urgent Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Urgent_Care" cx="304.0" cy="478.6" r="7" fill="#EF9F27" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Sunshine Urgent Care - Lakeland" data-cat="Urgent Care" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Urgent_Care" cx="283.8" cy="559.1" r="7" fill="#EF9F27" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Watson XpressCare Highlands" data-cat="Urgent Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Urgent_Care" cx="209.5" cy="493.3" r="7" fill="#EF9F27" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Watson UC South" data-cat="Urgent Care" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Urgent_Care" cx="233.0" cy="389.9" r="7" fill="#EF9F27" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Watson UC Main" data-cat="Urgent Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Rehab" cx="594.0" cy="481.7" r="7" fill="#D4537E" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="CORA PT - Winter Haven" data-cat="Rehab" data-pri="High" data-rel="new"/>
+    <circle class="dot Rehab" cx="571.5" cy="435.4" r="7" fill="#D4537E" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Select Physical Therapy - WH" data-cat="Rehab" data-pri="High" data-rel="new"/>
+    <circle class="dot Rehab" cx="581.4" cy="460.6" r="7" fill="#D4537E" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="AdventHealth Sports Med & Rehab" data-cat="Rehab" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Rehab" cx="583.9" cy="448.2" r="7" fill="#D4537E" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="WH Hospital Rehabilitation" data-cat="Rehab" data-pri="High" data-rel="new"/>
+    <circle class="dot Rehab" cx="644.3" cy="494.4" r="7" fill="#D4537E" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Core Rehabilitation - WH" data-cat="Rehab" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Rehab" cx="305.4" cy="480.3" r="7" fill="#D4537E" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="CORA PT - South Lakeland" data-cat="Rehab" data-pri="High" data-rel="new"/>
+    <circle class="dot Rehab" cx="202.9" cy="483.4" r="7" fill="#D4537E" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Encompass Health - Lakeland" data-cat="Rehab" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="585.3" cy="456.2" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="We Care Family Physicians" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="696.7" cy="521.5" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="AdventHealth Primary Care+ WH" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="582.2" cy="451.4" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="AdventHealth Internal Medicine WH" data-cat="Primary Care" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="595.7" cy="456.2" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="#EF9F27" stroke-width="2.5" data-name="Good Health Physicians LLC" data-cat="Primary Care" data-pri="Medium" data-rel="monitor"/>
+    <circle class="dot Primary_Care" cx="581.3" cy="447.2" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Willie K. Jones, MD" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="581.3" cy="447.1" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Tristan M. Harrison, MD" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="581.3" cy="446.9" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Mary R. De Sena, MD" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="581.3" cy="448.0" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Richard K. Lacalamito, DO" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="580.8" cy="446.8" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Rebecca N. Thomas, MD" data-cat="Primary Care" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="590.0" cy="474.1" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Alexandra Cohen, MD" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="579.4" cy="453.6" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Dr. Janelle Ramcharan, DO" data-cat="Primary Care" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="707.4" cy="521.2" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Betina P. Laiolo, MD" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="582.4" cy="433.9" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Central FL Health Care - WH" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="450.3" cy="401.8" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Auburndale Family Health (BayCare)" data-cat="Primary Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="278.1" cy="475.2" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Freedom Family Practice" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="226.9" cy="526.9" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="LakelandMD" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="235.8" cy="402.6" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Soni Family Practice" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="214.1" cy="542.7" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="#EF9F27" stroke-width="2.5" data-name="Community Medical Group Lakeland" data-cat="Primary Care" data-pri="High" data-rel="monitor"/>
+    <circle class="dot Primary_Care" cx="215.5" cy="554.1" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Dr. Andrea Hastings, MD" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="229.6" cy="513.0" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="#1D9E75" stroke-width="2.5" data-name="Robinson Family Clinic" data-cat="Primary Care" data-pri="Medium" data-rel="active"/>
+    <circle class="dot Primary_Care" cx="235.0" cy="395.4" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Dr. Marc Guerrier, MD" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="227.3" cy="402.4" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Central FL Health Care - Lakeland" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="234.8" cy="398.4" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Lakeland Family Medicine" data-cat="Primary Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="284.1" cy="558.9" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Watson Clinic Highlands" data-cat="Primary Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="233.0" cy="389.9" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Watson Clinic Main" data-cat="Primary Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="209.7" cy="493.3" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="#1D9E75" stroke-width="2.5" data-name="Watson Clinic South" data-cat="Primary Care" data-pri="Low" data-rel="active"/>
+    <circle class="dot Primary_Care" cx="714.0" cy="264.7" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="IMA Medical Clinic - Davenport" data-cat="Primary Care" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="717.2" cy="299.4" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="BayCare - Haines City" data-cat="Primary Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="762.2" cy="553.6" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="TLC Family Practice - Lake Wales" data-cat="Primary Care" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="770.1" cy="639.4" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="IMA Medical Clinic - Lake Wales" data-cat="Primary Care" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="782.3" cy="639.1" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Central FL Health Care - Lake Wales" data-cat="Primary Care" data-pri="High" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="831.2" cy="645.0" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Medical Associates - Lake Wales" data-cat="Primary Care" data-pri="Medium" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="403.0" cy="614.2" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Watson Clinic Bartow" data-cat="Primary Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot Primary_Care" cx="403.2" cy="614.3" r="7" fill="#1D9E75" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="BayCare - Bartow" data-cat="Primary Care" data-pri="Low" data-rel="new"/>
+    <circle class="dot MRI" cx="588.5" cy="456.4" r="7" fill="#888780" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="MRI Associates - WH" data-cat="MRI" data-pri="High" data-rel="new"/>
+    <circle class="dot MRI" cx="586.3" cy="456.1" r="7" fill="#888780" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="A.T. Radiology - WH" data-cat="MRI" data-pri="High" data-rel="new"/>
+    <circle class="dot MRI" cx="581.3" cy="447.2" r="7" fill="#888780" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="BayCare Outpatient Imaging - WH" data-cat="MRI" data-pri="High" data-rel="new"/>
+    <circle class="dot MRI" cx="583.9" cy="448.2" r="7" fill="#888780" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Imaging Services WH Hospital" data-cat="MRI" data-pri="High" data-rel="new"/>
+    <circle class="dot MRI" cx="705.4" cy="525.4" r="7" fill="#888780" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Akumin - Winter Haven" data-cat="MRI" data-pri="High" data-rel="new"/>
+    <circle class="dot MRI" cx="580.4" cy="461.2" r="7" fill="#888780" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" data-name="Millennium Physician Radiology" data-cat="MRI" data-pri="Low" data-rel="new"/>
+
+    <!-- IMG Facility pin -->
+    <g id="img-pin" transform="translate(580.8,458.6)">
+      <path d="M0,-28 C-11,-28 -20,-19 -20,-8 C-20,5 0,20 0,20 C0,20 20,5 20,-8 C20,-19 11,-28 0,-28Z" fill="#E24B4A"/>
+      <circle cx="0" cy="-8" r="7" fill="white"/>
+      <circle cx="0" cy="-8" r="3.5" fill="#E24B4A"/>
+    </g>
+
+    <!-- IMG label -->
+    <rect x="602.8" y="428.6" width="42" height="16" rx="3" fill="white" fill-opacity="0.92" stroke="#E24B4A" stroke-width="0.8"/>
+    <text x="623.8" y="439.6" text-anchor="middle" font-size="10" fill="#E24B4A" font-family="Arial,sans-serif" font-weight="700">IMG</text>
+
+    <!-- Scale bar (approximate) -->
+    <!-- 10 miles ≈ 10/69 degrees lat ≈ computed px -->
+  </svg>
+
+  <!-- Tooltip -->
+  <div class="tooltip" id="tooltip">
+    <div class="tooltip-name" id="tt-name">Name</div>
+    <div class="tooltip-meta" id="tt-meta">City · Category</div>
+    <div class="tooltip-badges" id="tt-badges"></div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <h3>Legend</h3>
+    <div class="li">
+      <svg width="14" height="20" viewBox="0 0 14 20"><path d="M7 0 C3.13 0 0 3.13 0 7 C0 12.25 7 20 7 20 C7 20 14 12.25 14 7 C14 3.13 10.87 0 7 0Z" fill="#E24B4A"/><circle cx="7" cy="7" r="3" fill="white"/></svg>
+      IMG Facility
+    </div>
+    <hr class="legend-div">
+    <div class="li"><div class="dot-swatch" style="background:#378ADD;"></div>Chiropractor</div>
+    <div class="li"><div class="dot-swatch" style="background:#7F77DD;"></div>PI Attorney</div>
+    <div class="li"><div class="dot-swatch" style="background:#1D9E75;"></div>Primary Care / GP</div>
+    <div class="li"><div class="dot-swatch" style="background:#EF9F27;"></div>Urgent Care</div>
+    <div class="li"><div class="dot-swatch" style="background:#D4537E;"></div>Physical Rehab</div>
+    <div class="li"><div class="dot-swatch" style="background:#888780;"></div>MRI / Imaging</div>
+    <hr class="legend-div">
+    <div style="font-size:10px;font-weight:700;color:#555;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px;">Relationship</div>
+    <div class="li"><div class="ring-swatch" style="border-color:#1D9E75;"></div>Existing Active</div>
+    <div class="li"><div class="ring-swatch" style="border-color:#EF9F27;"></div>Existing — Monitor</div>
+    <div class="li"><div class="ring-swatch" style="border-color:#ccc;"></div>No Relationship</div>
+    <hr class="legend-div">
+    <div style="font-size:10px;color:#999;">— — 30-mile radius</div>
+    <div style="font-size:10px;color:#999;margin-top:2px;">· · · · 5-mile MRI radius</div>
+  </div>
+
+  <div class="scale-bar">
+    <svg width="80" height="16" style="display:block;margin-bottom:3px;">
+      <line x1="0" y1="8" x2="80" y2="8" stroke="#777" stroke-width="1.5"/>
+      <line x1="0" y1="4" x2="0" y2="12" stroke="#777" stroke-width="1.5"/>
+      <line x1="80" y1="4" x2="80" y2="12" stroke="#777" stroke-width="1.5"/>
+      <line x1="40" y1="6" x2="40" y2="10" stroke="#777" stroke-width="1"/>
+    </svg>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#666;">
+      <span>0</span><span>~10 mi</span><span>~20 mi</span>
+    </div>
+  </div>
+</div>
+
+<script>
+let activeFilter = 'all';
+
+function filterCat(cat) {
+  activeFilter = cat;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const btnId = 'btn-' + cat.replace(' ', '_');
+  const btn = document.getElementById(btnId);
+  if(btn) btn.classList.add('active');
+
+  document.querySelectorAll('.dot').forEach(dot => {
+    const dotCat = dot.getAttribute('data-cat');
+    if(cat === 'all' || dotCat === cat) {
+      dot.style.display = '';
+    } else {
+      dot.style.display = 'none';
+    }
+  });
+}
+
+const tooltip = document.getElementById('tooltip');
+const ttName = document.getElementById('tt-name');
+const ttMeta = document.getElementById('tt-meta');
+const ttBadges = document.getElementById('tt-badges');
+
+const catLabels = {
+  'Chiropractic': 'Chiropractic',
+  'Attorney': 'PI Attorney',
+  'Primary Care': 'Primary Care',
+  'Urgent Care': 'Urgent Care',
+  'Rehab': 'Physical Rehab',
+  'MRI': 'MRI / Imaging'
+};
+
+const relLabels = {
+  'active': '🟢 Existing Active',
+  'monitor': '🟡 Existing — Monitor',
+  'new': '🔴 New Target'
+};
+
+document.querySelectorAll('.dot').forEach(dot => {
+  dot.addEventListener('mouseenter', function(e) {
+    const name = this.getAttribute('data-name');
+    const cat = this.getAttribute('data-cat');
+    const pri = this.getAttribute('data-pri');
+    const rel = this.getAttribute('data-rel');
+
+    ttName.textContent = name;
+    ttMeta.textContent = catLabels[cat] || cat;
+    ttBadges.innerHTML = `<span class="badge badge-${pri}">${pri} Priority</span><span class="badge badge-${rel}">${relLabels[rel] || rel}</span>`;
+    tooltip.style.display = 'block';
+    positionTooltip(e);
+  });
+
+  dot.addEventListener('mousemove', positionTooltip);
+
+  dot.addEventListener('mouseleave', function() {
+    tooltip.style.display = 'none';
+  });
+});
+
+function positionTooltip(e) {
+  const wrap = document.getElementById('map-wrap');
+  const rect = wrap.getBoundingClientRect();
+  let x = e.clientX - rect.left + 14;
+  let y = e.clientY - rect.top + 14;
+  const tw = 260, th = 80;
+  if(x + tw > rect.width) x = e.clientX - rect.left - tw - 10;
+  if(y + th > rect.height) y = e.clientY - rect.top - th - 10;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+
+// ── Zoom & Pan ────────────────────────────────────────────────────────
+const svgEl = document.getElementById('map');
+let scale = 1, tx = 0, ty = 0;
+let isDragging = false, startX = 0, startY = 0, startTx = 0, startTy = 0;
+
+const MIN_SCALE = 0.8, MAX_SCALE = 12;
+
+function applyTransform() {
+  // Apply transform to inner group
+  mapGroup.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
+  // Keep legend, tooltip, zoom controls unscaled - they're outside the SVG
+}
+
+// Wrap all SVG children in a group for transform
+const mapGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+mapGroup.id = 'map-group';
+while(svgEl.firstChild) mapGroup.appendChild(svgEl.firstChild);
+svgEl.appendChild(mapGroup);
+
+function zoomIn()  { zoomTo(scale * 1.5); }
+function zoomOut() { zoomTo(scale / 1.5); }
+function zoomReset() { scale=1; tx=0; ty=0; applyTransform(); }
+
+function zoomTo(newScale, pivotX, pivotY) {
+  const vb = svgEl.viewBox.baseVal;
+  const rect = svgEl.getBoundingClientRect();
+  // Default pivot = center
+  if(pivotX === undefined) { pivotX = vb.width/2; pivotY = vb.height/2; }
+  const clamped = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
+  // Adjust translation to zoom toward pivot point
+  const ratio = clamped / scale;
+  tx = pivotX - ratio * (pivotX - tx);
+  ty = pivotY - ratio * (pivotY - ty);
+  scale = clamped;
+  applyTransform();
+}
+
+// Scroll wheel zoom
+svgEl.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  const rect = svgEl.getBoundingClientRect();
+  const vb = svgEl.viewBox.baseVal;
+  // Convert mouse position to SVG coordinates
+  const mouseX = (e.clientX - rect.left) / rect.width * vb.width;
+  const mouseY = (e.clientY - rect.top) / rect.height * vb.height;
+  const delta = e.deltaY > 0 ? 0.85 : 1.18;
+  zoomTo(scale * delta, mouseX, mouseY);
+}, { passive: false });
+
+// Mouse drag pan
+svgEl.addEventListener('mousedown', function(e) {
+  if(e.button !== 0) return;
+  isDragging = true;
+  startX = e.clientX; startY = e.clientY;
+  startTx = tx; startTy = ty;
+  svgEl.classList.add('panning');
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', function(e) {
+  if(!isDragging) return;
+  const rect = svgEl.getBoundingClientRect();
+  const vb = svgEl.viewBox.baseVal;
+  const scaleX = vb.width / rect.width;
+  const scaleY = vb.height / rect.height;
+  tx = startTx + (e.clientX - startX) * scaleX;
+  ty = startTy + (e.clientY - startY) * scaleY;
+  applyTransform();
+});
+
+window.addEventListener('mouseup', function() {
+  isDragging = false;
+  svgEl.classList.remove('panning');
+});
+
+// Touch support (pinch zoom + drag)
+let lastTouchDist = null, lastTouchMid = null;
+svgEl.addEventListener('touchstart', function(e) {
+  if(e.touches.length === 2) {
+    lastTouchDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    lastTouchMid = {
+      x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+      y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+    };
+  } else if(e.touches.length === 1) {
+    isDragging = true;
+    startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    startTx = tx; startTy = ty;
+  }
+  e.preventDefault();
+}, { passive: false });
+
+svgEl.addEventListener('touchmove', function(e) {
+  if(e.touches.length === 2 && lastTouchDist !== null) {
+    const newDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    const rect = svgEl.getBoundingClientRect();
+    const vb = svgEl.viewBox.baseVal;
+    const mid = {
+      x: ((e.touches[0].clientX + e.touches[1].clientX)/2 - rect.left) / rect.width * vb.width,
+      y: ((e.touches[0].clientY + e.touches[1].clientY)/2 - rect.top) / rect.height * vb.height
+    };
+    zoomTo(scale * (newDist / lastTouchDist), mid.x, mid.y);
+    lastTouchDist = newDist;
+  } else if(e.touches.length === 1 && isDragging) {
+    const rect = svgEl.getBoundingClientRect();
+    const vb = svgEl.viewBox.baseVal;
+    tx = startTx + (e.touches[0].clientX - startX) / rect.width * vb.width;
+    ty = startTy + (e.touches[0].clientY - startY) / rect.height * vb.height;
+    applyTransform();
+  }
+  e.preventDefault();
+}, { passive: false });
+
+svgEl.addEventListener('touchend', function() {
+  isDragging = false; lastTouchDist = null; lastTouchMid = null;
+});
+
+// Double-click to zoom in on a point
+svgEl.addEventListener('dblclick', function(e) {
+  const rect = svgEl.getBoundingClientRect();
+  const vb = svgEl.viewBox.baseVal;
+  const mouseX = (e.clientX - rect.left) / rect.width * vb.width;
+  const mouseY = (e.clientY - rect.top) / rect.height * vb.height;
+  zoomTo(scale * 2, mouseX, mouseY);
+});
+
+</script>
+</body>
+</html>
